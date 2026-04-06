@@ -1,0 +1,904 @@
+## Complete Setup Script with All Commands
+
+---
+
+## 📄 1. Create Setup Script
+
+```bash
+cat > /root/spring-boot-crud-with-mysql/setup.sh << 'EOF'
+#!/bin/bash
+
+#================================================================
+# SPRING BOOT CRUD WITH MYSQL - COMPLETE SETUP SCRIPT
+# Author: DevOps Setup Script
+# Description: This script will setup everything needed to run
+#              Spring Boot CRUD application with MySQL
+#================================================================
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+print_header()  { echo -e "\n${GREEN}========================================${NC}"; 
+                  echo -e "${GREEN} $1${NC}";
+                  echo -e "${GREEN}========================================${NC}\n"; }
+
+#================================================================
+# STEP 1: CHECK & INSTALL JAVA
+#================================================================
+print_header "STEP 1: Checking Java Installation"
+
+if command -v java &> /dev/null; then
+    JAVA_VER=$(java -version 2>&1 | head -1)
+    print_success "Java is installed: $JAVA_VER"
+else
+    print_warning "Java not found. Installing Java 21..."
+    sudo apt-get update -y
+    sudo apt-get install -y openjdk-21-jdk
+    print_success "Java 21 installed successfully!"
+fi
+
+# Check javac (compiler)
+if command -v javac &> /dev/null; then
+    JAVAC_VER=$(javac -version 2>&1)
+    print_success "javac is installed: $JAVAC_VER"
+else
+    print_error "javac not found. Installing JDK..."
+    sudo apt-get install -y openjdk-21-jdk
+fi
+
+#================================================================
+# STEP 2: SET JAVA_HOME
+#================================================================
+print_header "STEP 2: Setting JAVA_HOME"
+
+# Find Java installation path
+JAVA_PATH=$(update-alternatives --list java 2>/dev/null | grep java-21 | head -1 | sed 's|/bin/java||')
+
+if [ -z "$JAVA_PATH" ]; then
+    JAVA_PATH="/usr/lib/jvm/java-21-openjdk-amd64"
+fi
+
+# Set JAVA_HOME for current session
+export JAVA_HOME=$JAVA_PATH
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Make JAVA_HOME permanent
+if ! grep -q "JAVA_HOME" ~/.bashrc; then
+    echo "export JAVA_HOME=$JAVA_PATH" >> ~/.bashrc
+    echo 'export PATH=$JAVA_HOME/bin:$PATH' >> ~/.bashrc
+    print_success "JAVA_HOME added to ~/.bashrc"
+fi
+
+print_success "JAVA_HOME set to: $JAVA_HOME"
+
+#================================================================
+# STEP 3: CHECK & INSTALL MAVEN
+#================================================================
+print_header "STEP 3: Checking Maven Installation"
+
+if command -v mvn &> /dev/null; then
+    MVN_VER=$(mvn --version | head -1)
+    print_success "Maven is installed: $MVN_VER"
+else
+    print_warning "Maven not found. Installing Maven..."
+    sudo apt-get install -y maven
+    print_success "Maven installed successfully!"
+fi
+
+#================================================================
+# STEP 4: CHECK & INSTALL DOCKER
+#================================================================
+print_header "STEP 4: Checking Docker Installation"
+
+if command -v docker &> /dev/null; then
+    DOCKER_VER=$(docker --version)
+    print_success "Docker is installed: $DOCKER_VER"
+else
+    print_warning "Docker not found. Installing Docker..."
+    sudo apt-get update -y
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+        sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) \
+        signed-by=/etc/apt/keyrings/docker.gpg] \
+        https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update -y
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    sudo usermod -aG docker $USER
+    print_success "Docker installed successfully!"
+fi
+
+# Check Docker Compose
+if docker compose version &> /dev/null; then
+    DC_VER=$(docker compose version)
+    print_success "Docker Compose is available: $DC_VER"
+else
+    print_error "Docker Compose not found!"
+fi
+
+#================================================================
+# STEP 5: FIX POM.XML
+#================================================================
+print_header "STEP 5: Checking and Fixing pom.xml"
+
+POM_FILE="./pom.xml"
+
+if [ ! -f "$POM_FILE" ]; then
+    print_error "pom.xml not found! Make sure you are in project directory."
+    exit 1
+fi
+
+# Fix MySQL groupId (mysql -> com.mysql)
+if grep -q "<groupId>mysql</groupId>" "$POM_FILE"; then
+    print_warning "Found old MySQL groupId. Fixing..."
+    sed -i 's|<groupId>mysql</groupId>|<groupId>com.mysql</groupId>|g' "$POM_FILE"
+    print_success "MySQL groupId fixed to com.mysql"
+else
+    print_success "MySQL groupId is correct (com.mysql)"
+fi
+
+# Check Java version in pom.xml
+POM_JAVA=$(grep -oP '(?<=<java.version>)[^<]+' "$POM_FILE")
+SYSTEM_JAVA=$(java -version 2>&1 | grep -oP '(?<=version ")[0-9]+')
+print_info "pom.xml Java version: $POM_JAVA"
+print_info "System Java version: $SYSTEM_JAVA"
+
+if [ "$POM_JAVA" != "$SYSTEM_JAVA" ]; then
+    print_warning "Java version mismatch! Fixing pom.xml..."
+    sed -i "s|<java.version>$POM_JAVA</java.version>|<java.version>$SYSTEM_JAVA</java.version>|" "$POM_FILE"
+    print_success "Java version updated to $SYSTEM_JAVA in pom.xml"
+else
+    print_success "Java version matches: $POM_JAVA"
+fi
+
+#================================================================
+# STEP 6: CREATE .env FILE
+#================================================================
+print_header "STEP 6: Creating .env File"
+
+if [ ! -f ".env" ]; then
+    cat > .env << 'ENVEOF'
+# Database Configuration
+DB_HOST=mysql
+DB_PORT=3306
+DB_NAME=userdb
+DB_USERNAME=root
+DB_PASSWORD=root
+
+# Server Configuration
+SERVER_PORT=8080
+ENVEOF
+    print_success ".env file created!"
+else
+    print_success ".env file already exists!"
+fi
+
+# Show .env content
+print_info "Current .env file content:"
+cat .env
+
+#================================================================
+# STEP 7: BUILD MAVEN PROJECT
+#================================================================
+print_header "STEP 7: Building Maven Project"
+
+print_info "Running: mvn clean package -DskipTests"
+mvn clean package -DskipTests
+
+if [ $? -eq 0 ]; then
+    print_success "Maven build successful!"
+    print_info "JAR file created:"
+    ls -lh target/*.jar
+else
+    print_error "Maven build failed!"
+    exit 1
+fi
+
+#================================================================
+# STEP 8: CREATE DOCKERFILE
+#================================================================
+print_header "STEP 8: Checking Dockerfile"
+
+if [ ! -f "Dockerfile" ]; then
+    print_warning "Dockerfile not found. Creating..."
+    cat > Dockerfile << 'DOCKEREOF'
+# Use official OpenJDK 21 slim image as base
+FROM openjdk:21-jdk-slim
+
+# Set working directory inside container
+WORKDIR /app
+
+# Copy the built JAR file into container
+COPY target/user-management-service-1.0.0.jar app.jar
+
+# Expose port 8080
+EXPOSE 8080
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
+DOCKEREOF
+    print_success "Dockerfile created!"
+else
+    print_success "Dockerfile already exists!"
+fi
+
+# Show Dockerfile content
+print_info "Dockerfile content:"
+cat Dockerfile
+
+#================================================================
+# STEP 9: BUILD DOCKER IMAGE
+#================================================================
+print_header "STEP 9: Building Docker Image"
+
+print_info "Building Docker image: user-management-service:1.0.0"
+docker build -t user-management-service:1.0.0 .
+
+if [ $? -eq 0 ]; then
+    print_success "Docker image built successfully!"
+    print_info "Available Docker images:"
+    docker images | grep user-management-service
+else
+    print_error "Docker image build failed!"
+    exit 1
+fi
+
+#================================================================
+# STEP 10: START WITH DOCKER COMPOSE
+#================================================================
+print_header "STEP 10: Starting Services with Docker Compose"
+
+# Stop any existing containers
+print_info "Stopping existing containers..."
+docker compose down
+
+# Start fresh
+print_info "Starting MySQL and App containers..."
+docker compose up -d
+
+# Wait for services to start
+print_info "Waiting 30 seconds for services to start..."
+sleep 30
+
+# Check running containers
+print_info "Running containers:"
+docker ps
+
+#================================================================
+# STEP 11: HEALTH CHECKS
+#================================================================
+print_header "STEP 11: Health Checks"
+
+# Check if app is running
+print_info "Checking application health..."
+sleep 10
+
+HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/actuator/health 2>/dev/null || echo "000")
+
+if [ "$HTTP_STATUS" == "200" ]; then
+    print_success "Application is running! HTTP Status: $HTTP_STATUS"
+else
+    print_warning "Application health check returned: $HTTP_STATUS"
+    print_info "Check logs with: docker compose logs app -f"
+fi
+
+#================================================================
+# COMPLETION
+#================================================================
+print_header "SETUP COMPLETE!"
+print_success "Application Setup Done!"
+echo ""
+print_info "Useful Commands:"
+echo "  View App Logs:        docker compose logs app -f"
+echo "  View MySQL Logs:      docker compose logs mysql -f"
+echo "  View All Logs:        docker compose logs -f"
+echo "  Stop All:             docker compose down"
+echo "  Restart All:          docker compose restart"
+echo "  Swagger UI:           http://localhost:8080/swagger-ui/index.html"
+echo "  API Base URL:         http://localhost:8080/api/users"
+echo ""
+
+EOF
+
+chmod +x /root/spring-boot-crud-with-mysql/setup.sh
+echo "Setup script created!"
+```
+
+---
+
+## 📄 2. Create Dockerfile
+
+```bash
+cat > /root/spring-boot-crud-with-mysql/Dockerfile << 'EOF'
+#================================================================
+# Dockerfile for Spring Boot User Management Service
+# Base Image: OpenJDK 21 Slim
+#================================================================
+
+# Use official OpenJDK 21 slim image
+FROM openjdk:21-jdk-slim
+
+# Set working directory inside container
+WORKDIR /app
+
+# Copy Maven built JAR file into container
+COPY target/user-management-service-1.0.0.jar app.jar
+
+# Expose application port
+EXPOSE 8080
+
+# Run the Spring Boot application
+ENTRYPOINT ["java", "-jar", "app.jar"]
+EOF
+
+echo "Dockerfile created!"
+cat Dockerfile
+```
+
+---
+
+## 📄 3. Create `.env` File
+
+```bash
+cat > /root/spring-boot-crud-with-mysql/.env << 'EOF'
+#================================================================
+# Environment Variables for Spring Boot Application
+#================================================================
+
+# MySQL Database Configuration
+DB_HOST=mysql
+DB_PORT=3306
+DB_NAME=userdb
+DB_USERNAME=root
+DB_PASSWORD=root
+
+# Application Server Port
+SERVER_PORT=8080
+EOF
+
+echo ".env file created!"
+cat .env
+```
+
+---
+
+## 📄 4. Create `docker-compose.yml`
+
+```bash
+cat > /root/spring-boot-crud-with-mysql/docker-compose.yml << 'EOF'
+#================================================================
+# Docker Compose for Spring Boot + MySQL
+#================================================================
+version: '3.8'
+
+services:
+  # MySQL Database Service
+  mysql:
+    image: mysql:8
+    container_name: mysql-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Spring Boot Application Service
+  app:
+    build: .
+    container_name: spring-boot-app
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SERVER_PORT: ${SERVER_PORT}
+    ports:
+      - "8080:8080"
+
+# Persistent Volume for MySQL data
+volumes:
+  mysql_data:
+EOF
+
+echo "docker-compose.yml created!"
+```
+
+---
+
+## 📄 5. Docker Commands
+
+```bash
+#================================================================
+# DOCKER COMMANDS
+#================================================================
+
+# Build Docker Image
+docker build -t user-management-service:1.0.0 .
+
+# Run with Docker Compose (uses .env file automatically)
+docker compose up -d
+
+# Check running containers
+docker ps
+
+# View App Logs
+docker compose logs app -f
+
+# View MySQL Logs
+docker compose logs mysql -f
+
+# View All Logs
+docker compose logs -f
+
+# Stop All Containers
+docker compose down
+
+# Stop and Remove Volumes (clears DB data)
+docker compose down -v
+
+# Restart All Services
+docker compose restart
+
+# Access MySQL inside container
+docker exec -it mysql-db mysql -u root -proot
+
+# Access App container shell
+docker exec -it spring-boot-app /bin/bash
+```
+
+---
+
+## 📄 6. MySQL Commands (Inside Container)
+
+```bash
+# Access MySQL container
+docker exec -it mysql-db mysql -u root -proot
+
+# Inside MySQL shell:
+# Show all databases
+SHOW DATABASES;
+
+# Use userdb database
+USE userdb;
+
+# Show all tables
+SHOW TABLES;
+
+# Show all users
+SELECT * FROM users;
+
+# Exit MySQL
+EXIT;
+```
+
+---
+
+## 📄 7. API & Swagger Commands
+
+```bash
+#================================================================
+# API TESTING COMMANDS
+#================================================================
+
+# Check Swagger UI (open in browser)
+echo "Swagger UI: http://localhost:8080/swagger-ui/index.html"
+
+# Create User (POST)
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "1234567890"
+  }'
+
+# Get All Users (GET)
+curl -X GET http://localhost:8080/api/users
+
+# Get User by ID (GET)
+curl -X GET http://localhost:8080/api/users/1
+
+# Update User (PUT)
+curl -X PUT http://localhost:8080/api/users/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Updated",
+    "email": "john.updated@example.com",
+    "phone": "9876543210"
+  }'
+
+# Delete User (DELETE)
+curl -X DELETE http://localhost:8080/api/users/1
+```
+
+---
+
+## 📄 8. Kubernetes Manifests & Commands
+
+```bash
+# Create kubernetes directory
+mkdir -p /root/spring-boot-crud-with-mysql/k8s
+```
+
+### Create All K8s Files:
+
+```bash
+#================================================================
+# 1. NAMESPACE
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/namespace.yml << 'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spring-app
+EOF
+
+#================================================================
+# 2. MYSQL SECRET
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/mysql-secret.yml << 'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+  namespace: spring-app
+type: Opaque
+stringData:
+  DB_PASSWORD: root
+  DB_USERNAME: root
+  DB_NAME: userdb
+EOF
+
+#================================================================
+# 3. MYSQL PERSISTENT VOLUME
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/mysql-pv.yml << 'EOF'
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  namespace: spring-app
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/mysql
+EOF
+
+#================================================================
+# 4. MYSQL PERSISTENT VOLUME CLAIM
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/mysql-pvc.yml << 'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: spring-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+
+#================================================================
+# 5. MYSQL DEPLOYMENT
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/mysql-deployment.yml << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: spring-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: DB_NAME
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: mysql-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+EOF
+
+#================================================================
+# 6. MYSQL SERVICE
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/mysql-service.yml << 'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: spring-app
+spec:
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: 3306
+  type: ClusterIP
+EOF
+
+#================================================================
+# 7. APP CONFIGMAP
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/app-configmap.yml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: spring-app
+data:
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  SERVER_PORT: "8080"
+EOF
+
+#================================================================
+# 8. APP DEPLOYMENT
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/app-deployment.yml << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-app
+  namespace: spring-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spring-boot-app
+  template:
+    metadata:
+      labels:
+        app: spring-boot-app
+    spec:
+      containers:
+        - name: spring-boot-app
+          image: user-management-service:1.0.0
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: DB_PORT
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: DB_NAME
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secret
+                  key: DB_PASSWORD
+            - name: SERVER_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: SERVER_PORT
+EOF
+
+#================================================================
+# 9. APP SERVICE
+#================================================================
+cat > /root/spring-boot-crud-with-mysql/k8s/app-service.yml << 'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-boot-app-service
+  namespace: spring-app
+spec:
+  selector:
+    app: spring-boot-app
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080
+  type: NodePort
+EOF
+
+echo "All Kubernetes files created!"
+ls -lh /root/spring-boot-crud-with-mysql/k8s/
+```
+
+---
+
+## 📄 9. Kubernetes Deploy Commands
+
+```bash
+#================================================================
+# KUBERNETES DEPLOYMENT COMMANDS
+#================================================================
+
+# Step 1: Load Docker image into Kubernetes (if using local image)
+docker save user-management-service:1.0.0 | \
+  sudo ctr -n k8s.io images import -
+
+# Step 2: Apply all manifests in order
+kubectl apply -f k8s/namespace.yml
+kubectl apply -f k8s/mysql-secret.yml
+kubectl apply -f k8s/mysql-pv.yml
+kubectl apply -f k8s/mysql-pvc.yml
+kubectl apply -f k8s/mysql-deployment.yml
+kubectl apply -f k8s/mysql-service.yml
+kubectl apply -f k8s/app-configmap.yml
+kubectl apply -f k8s/app-deployment.yml
+kubectl apply -f k8s/app-service.yml
+
+# OR Apply all at once
+kubectl apply -f k8s/
+
+# Step 3: Check all resources
+kubectl get all -n spring-app
+
+# Step 4: Check Pods status
+kubectl get pods -n spring-app
+
+# Step 5: Watch Pods until Running
+kubectl get pods -n spring-app -w
+
+# Step 6: Check Pod logs
+kubectl logs -f deployment/spring-boot-app -n spring-app
+kubectl logs -f deployment/mysql -n spring-app
+
+# Step 7: Check Services
+kubectl get svc -n spring-app
+
+# Step 8: Get Node IP
+kubectl get nodes -o wide
+
+# Step 9: Access Application
+NODE_IP=$(kubectl get nodes -o wide | awk 'NR==2{print $6}')
+echo "App URL: http://$NODE_IP:30080"
+echo "Swagger: http://$NODE_IP:30080/swagger-ui/index.html"
+
+# Step 10: Access API
+curl http://$NODE_IP:30080/api/users
+```
+
+---
+
+## 📄 10. Kubernetes Check Commands
+
+```bash
+#================================================================
+# KUBERNETES CHECK & DEBUG COMMANDS
+#================================================================
+
+# Check all resources in namespace
+kubectl get all -n spring-app
+
+# Check pods with details
+kubectl describe pod -n spring-app
+
+# Check pod logs
+kubectl logs -f deployment/spring-boot-app -n spring-app
+
+# Check MySQL logs
+kubectl logs -f deployment/mysql -n spring-app
+
+# Check events (useful for debugging)
+kubectl get events -n spring-app
+
+# Check configmap
+kubectl get configmap -n spring-app
+kubectl describe configmap app-config -n spring-app
+
+# Check secrets
+kubectl get secrets -n spring-app
+
+# Check persistent volumes
+kubectl get pv,pvc -n spring-app
+
+# Access MySQL inside K8s pod
+kubectl exec -it deployment/mysql -n spring-app -- mysql -u root -proot
+
+# Access App pod shell
+kubectl exec -it deployment/spring-boot-app -n spring-app -- /bin/bash
+
+# Delete all resources
+kubectl delete -f k8s/
+
+# Delete namespace (removes everything)
+kubectl delete namespace spring-app
+```
+
+---
+
+## 📄 11. Run Everything
+
+```bash
+# Go to project directory
+cd /root/spring-boot-crud-with-mysql
+
+# Run setup script
+chmod +x setup.sh
+./setup.sh
+```
+
+---
+
+## 📊 Summary
+
+| Task | Command |
+|------|---------|
+| **Build JAR** | `mvn clean package -DskipTests` |
+| **Build Image** | `docker build -t user-management-service:1.0.0 .` |
+| **Start Docker** | `docker compose up -d` |
+| **App Logs** | `docker compose logs app -f` |
+| **Swagger UI** | `http://localhost:8080/swagger-ui/index.html` |
+| **K8s Deploy** | `kubectl apply -f k8s/` |
+| **K8s Status** | `kubectl get all -n spring-app` |
+| **K8s Logs** | `kubectl logs -f deployment/spring-boot-app -n spring-app` |
+| **K8s Access** | `http://NODE_IP:30080/api/users` |

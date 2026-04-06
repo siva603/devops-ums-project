@@ -1,0 +1,5 @@
+{
+  "name": "User Management System",
+  "description": "A modern, responsive React frontend for User Management CRUD APIs with API and dummy data fallback.",
+  "requestFramePermissions": []
+}

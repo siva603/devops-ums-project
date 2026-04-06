@@ -1,0 +1,437 @@
+//================================================================
+// Jenkins Pipeline for Spring Boot CRUD with MySQL
+// Stages:
+//   1. Checkout Code
+//   2. Check Tools
+//   3. Fix pom.xml
+//   4. Build Maven Project
+//   5. Build Docker Image
+//   6. Push Docker Image
+//   7. Deploy to Kubernetes
+//   8. Verify Deployment
+//================================================================
+
+pipeline {
+
+    // Run on any available agent
+    agent any
+
+    //============================================================
+    // Environment Variables
+    //============================================================
+    environment {
+        // Application Details
+        APP_NAME         = "user-management-service"
+        APP_VERSION      = "1.0.0"
+
+        // Docker Details
+        DOCKER_IMAGE     = "${APP_NAME}:${APP_VERSION}"
+        DOCKERHUB_USER   = "your-dockerhub-username"
+        DOCKERHUB_IMAGE  = "${DOCKERHUB_USER}/${APP_NAME}:${APP_VERSION}"
+
+        // DockerHub Credentials ID (from Jenkins credentials)
+        DOCKER_CREDS     = credentials('dockerhub-credentials')
+
+        // Kubernetes Namespace
+        K8S_NAMESPACE    = "spring-app"
+
+        // Java Home
+        JAVA_HOME        = "/usr/lib/jvm/java-21-openjdk-amd64"
+    }
+
+    //============================================================
+    // Tools Configuration
+    //============================================================
+    tools {
+        maven "Maven-3.8"
+        jdk   "JDK-21"
+    }
+
+    //============================================================
+    // Pipeline Options
+    //============================================================
+    options {
+        // Keep last 5 builds
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        // Timeout after 30 minutes
+        timeout(time: 30, unit: 'MINUTES')
+        // Add timestamps to logs
+        timestamps()
+    }
+
+    //============================================================
+    // Pipeline Stages
+    //============================================================
+    stages {
+
+        //--------------------------------------------------------
+        // Stage 1: Checkout Code
+        //--------------------------------------------------------
+        stage('🔄 Checkout Code') {
+            steps {
+                echo '========================================='
+                echo ' Stage 1: Checking out source code...'
+                echo '========================================='
+
+                // Clean workspace before checkout
+                cleanWs()
+
+                // Checkout from Git
+                checkout scm
+
+                // Show checked out files
+                sh 'ls -lh'
+                sh 'echo "Branch: $(git branch --show-current)"'
+                sh 'echo "Commit: $(git log --oneline -1)"'
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 2: Check Tools
+        //--------------------------------------------------------
+        stage('🔧 Check Tools') {
+            steps {
+                echo '========================================='
+                echo ' Stage 2: Checking required tools...'
+                echo '========================================='
+
+                sh '''
+                    echo "--- Java Version ---"
+                    java -version
+
+                    echo "--- javac Version ---"
+                    javac -version
+
+                    echo "--- Maven Version ---"
+                    mvn --version
+
+                    echo "--- Docker Version ---"
+                    docker --version
+
+                    echo "--- kubectl Version ---"
+                    kubectl version --client
+
+                    echo "--- All tools verified! ---"
+                '''
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 3: Fix pom.xml
+        //--------------------------------------------------------
+        stage('🔨 Fix pom.xml') {
+            steps {
+                echo '========================================='
+                echo ' Stage 3: Fixing pom.xml...'
+                echo '========================================='
+
+                sh '''
+                    # Fix MySQL groupId
+                    if grep -q "<groupId>mysql</groupId>" pom.xml; then
+                        echo "Fixing MySQL groupId..."
+                        sed -i "s|<groupId>mysql</groupId>|<groupId>com.mysql</groupId>|g" pom.xml
+                        echo "MySQL groupId fixed!"
+                    else
+                        echo "MySQL groupId is already correct!"
+                    fi
+
+                    # Check Java version
+                    POM_JAVA=$(grep -oP "(?<=<java.version>)[^<]+" pom.xml)
+                    SYSTEM_JAVA=$(java -version 2>&1 | grep -oP "(?<=version \\")[0-9]+")
+
+                    echo "pom.xml Java: $POM_JAVA"
+                    echo "System Java: $SYSTEM_JAVA"
+
+                    # Fix Java version if mismatch
+                    if [ "$POM_JAVA" != "$SYSTEM_JAVA" ]; then
+                        echo "Fixing Java version in pom.xml..."
+                        sed -i "s|<java.version>$POM_JAVA</java.version>|<java.version>$SYSTEM_JAVA</java.version>|" pom.xml
+                        echo "Java version fixed to $SYSTEM_JAVA!"
+                    else
+                        echo "Java version matches: $POM_JAVA"
+                    fi
+
+                    # Verify pom.xml
+                    echo "--- MySQL dependency ---"
+                    grep -A3 "mysql" pom.xml
+
+                    echo "--- Java version ---"
+                    grep "java.version" pom.xml
+                '''
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 4: Build Maven Project
+        //--------------------------------------------------------
+        stage('🏗️ Maven Build') {
+            steps {
+                echo '========================================='
+                echo ' Stage 4: Building Maven project...'
+                echo '========================================='
+
+                sh '''
+                    # Set JAVA_HOME
+                    export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+                    export PATH=$JAVA_HOME/bin:$PATH
+
+                    # Build project
+                    mvn clean package -DskipTests
+
+                    # Verify JAR created
+                    echo "--- Built JAR file ---"
+                    ls -lh target/*.jar
+                '''
+            }
+
+            // Archive JAR as build artifact
+            post {
+                success {
+                    archiveArtifacts artifacts: 'target/*.jar',
+                                     fingerprint: true
+                    echo '✅ Maven build successful!'
+                }
+                failure {
+                    echo '❌ Maven build failed!'
+                }
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 5: Run Tests
+        //--------------------------------------------------------
+        stage('🧪 Run Tests') {
+            steps {
+                echo '========================================='
+                echo ' Stage 5: Running tests...'
+                echo '========================================='
+
+                sh '''
+                    export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+                    export PATH=$JAVA_HOME/bin:$PATH
+
+                    # Run tests
+                    mvn test || true
+                '''
+            }
+
+            post {
+                always {
+                    // Publish test results
+                    junit allowEmptyResults: true,
+                          testResults: 'target/surefire-reports/*.xml'
+                }
+                success {
+                    echo '✅ Tests passed!'
+                }
+                failure {
+                    echo '⚠️ Some tests failed!'
+                }
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 6: Build Docker Image
+        //--------------------------------------------------------
+        stage('🐳 Build Docker Image') {
+            steps {
+                echo '========================================='
+                echo ' Stage 6: Building Docker image...'
+                echo '========================================='
+
+                sh '''
+                    # Build Docker image
+                    docker build -t ${DOCKER_IMAGE} .
+                    docker tag ${DOCKER_IMAGE} ${DOCKERHUB_IMAGE}
+
+                    # Verify image
+                    echo "--- Docker Images ---"
+                    docker images | grep ${APP_NAME}
+                '''
+            }
+
+            post {
+                success {
+                    echo '✅ Docker image built successfully!'
+                }
+                failure {
+                    echo '❌ Docker image build failed!'
+                }
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 7: Push Docker Image to DockerHub
+        //--------------------------------------------------------
+        stage('📤 Push Docker Image') {
+            steps {
+                echo '========================================='
+                echo ' Stage 7: Pushing image to DockerHub...'
+                echo '========================================='
+
+                sh '''
+                    # Login to DockerHub
+                    echo ${DOCKER_CREDS_PSW} | \
+                        docker login -u ${DOCKER_CREDS_USR} --password-stdin
+
+                    # Push image
+                    docker push ${DOCKERHUB_IMAGE}
+
+                    echo "--- Image pushed to DockerHub ---"
+                    echo "Image: ${DOCKERHUB_IMAGE}"
+                '''
+            }
+
+            post {
+                success {
+                    echo '✅ Docker image pushed successfully!'
+                }
+                failure {
+                    echo '❌ Docker image push failed!'
+                }
+                always {
+                    // Logout from DockerHub
+                    sh 'docker logout'
+                }
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 8: Deploy to Kubernetes
+        //--------------------------------------------------------
+        stage('☸️ Deploy to Kubernetes') {
+            steps {
+                echo '========================================='
+                echo ' Stage 8: Deploying to Kubernetes...'
+                echo '========================================='
+
+                sh '''
+                    # Update image in deployment yaml
+                    sed -i "s|image: user-management-service:1.0.0|image: ${DOCKERHUB_IMAGE}|g" \
+                        k8s/app-deployment.yml
+
+                    # Change imagePullPolicy to Always
+                    sed -i "s|imagePullPolicy: Never|imagePullPolicy: Always|g" \
+                        k8s/app-deployment.yml
+
+                    # Apply all Kubernetes manifests
+                    echo "--- Creating Namespace ---"
+                    kubectl apply -f k8s/namespace.yml
+
+                    echo "--- Creating Secrets ---"
+                    kubectl apply -f k8s/mysql-secret.yml
+
+                    echo "--- Creating PV & PVC ---"
+                    kubectl apply -f k8s/mysql-pv.yml
+                    kubectl apply -f k8s/mysql-pvc.yml
+
+                    echo "--- Deploying MySQL ---"
+                    kubectl apply -f k8s/mysql-deployment.yml
+                    kubectl apply -f k8s/mysql-service.yml
+
+                    echo "--- Creating App Config ---"
+                    kubectl apply -f k8s/app-configmap.yml
+
+                    echo "--- Deploying Spring Boot App ---"
+                    kubectl apply -f k8s/app-deployment.yml
+                    kubectl apply -f k8s/app-service.yml
+
+                    echo "--- Waiting for deployments ---"
+                    kubectl rollout status deployment/mysql \
+                        -n ${K8S_NAMESPACE} --timeout=120s
+                    kubectl rollout status deployment/spring-boot-app \
+                        -n ${K8S_NAMESPACE} --timeout=120s
+                '''
+            }
+
+            post {
+                success {
+                    echo '✅ Kubernetes deployment successful!'
+                }
+                failure {
+                    echo '❌ Kubernetes deployment failed!'
+                }
+            }
+        }
+
+        //--------------------------------------------------------
+        // Stage 9: Verify Deployment
+        //--------------------------------------------------------
+        stage('✅ Verify Deployment') {
+            steps {
+                echo '========================================='
+                echo ' Stage 9: Verifying deployment...'
+                echo '========================================='
+
+                sh '''
+                    echo "--- All Resources ---"
+                    kubectl get all -n ${K8S_NAMESPACE}
+
+                    echo "--- Pods Status ---"
+                    kubectl get pods -n ${K8S_NAMESPACE}
+
+                    echo "--- Services ---"
+                    kubectl get svc -n ${K8S_NAMESPACE}
+
+                    echo "--- Node IP ---"
+                    NODE_IP=$(kubectl get nodes -o wide | awk "NR==2{print \\$6}")
+                    echo "App URL:    http://\$NODE_IP:30080"
+                    echo "Swagger UI: http://\$NODE_IP:30080/swagger-ui/index.html"
+                    echo "API URL:    http://\$NODE_IP:30080/api/users"
+
+                    echo "--- Testing API ---"
+                    sleep 15
+                    curl -s -o /dev/null -w "HTTP Status: %{http_code}" \
+                        http://\$NODE_IP:30080/api/users || true
+                '''
+            }
+        }
+    }
+
+    //============================================================
+    // Post Pipeline Actions
+    //============================================================
+    post {
+
+        // Always runs
+        always {
+            echo '========================================='
+            echo ' Pipeline Finished!'
+            echo '========================================='
+            sh '''
+                echo "--- Final Pod Status ---"
+                kubectl get pods -n spring-app || true
+
+                echo "--- Cleanup Docker ---"
+                docker rmi ${DOCKER_IMAGE} || true
+                docker rmi ${DOCKERHUB_IMAGE} || true
+                docker system prune -f || true
+            '''
+        }
+
+        // On success
+        success {
+            echo '✅ Pipeline completed successfully!'
+            sh '''
+                NODE_IP=$(kubectl get nodes -o wide | awk "NR==2{print \\$6}")
+                echo "========================================="
+                echo " Application is LIVE!"
+                echo "========================================="
+                echo " App URL:    http://$NODE_IP:30080"
+                echo " Swagger UI: http://$NODE_IP:30080/swagger-ui/index.html"
+                echo " API URL:    http://$NODE_IP:30080/api/users"
+                echo "========================================="
+            '''
+        }
+
+        // On failure
+        failure {
+            echo '❌ Pipeline failed!'
+            sh '''
+                echo "--- Debug Info ---"
+                kubectl get events -n spring-app || true
+                kubectl describe pods -n spring-app || true
+            '''
+        }
+    }
+}

@@ -1,0 +1,274 @@
+
+#================================================================
+# STEP 1: CHECK & INSTALL JAVA
+#================================================================
+
+
+ sudo apt-get update -y
+ sudo apt-get install -y openjdk-21-jdk
+
+
+ java --version
+
+ javac --version
+
+
+#================================================================
+# STEP 2: SET JAVA_HOME
+#================================================================
+
+
+JAVA_PATH="/usr/lib/jvm/java-21-openjdk-amd64"
+
+export JAVA_HOME=$JAVA_PATH
+export PATH=$JAVA_HOME/bin:$PATH
+
+
+
+#================================================================
+# STEP 3: CHECK & INSTALL MAVEN
+#================================================================
+
+
+ sudo apt-get install -y maven
+
+mvn --version
+
+
+#================================================================
+# STEP 4: CHECK & INSTALL DOCKER
+#================================================================
+
+
+sudo apt-get update -y
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+        sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) \
+        signed-by=/etc/apt/keyrings/docker.gpg] \
+        https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update -y
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    sudo usermod -aG docker $USER
+    print_success "Docker installed successfully!"
+
+
+#================================================================
+# STEP 5: BUILD MAVEN PROJECT
+#================================================================
+
+
+
+print_info "Running: mvn clean package -DskipTests"
+mvn clean package -DskipTests
+
+
+mvn test
+
+mvn -jar app.jar ( or ) mvn spring-boot:run
+
+
+
+#================================================================
+# STEP 6: CREATE DOCKERFILE
+#================================================================
+
+
+
+cat > Dockerfile << 'DOCKEREOF'
+# Use official OpenJDK 21 slim image as base
+FROM openjdk:21-jdk-slim
+
+# Set working directory inside container
+WORKDIR /app
+
+# Copy the built JAR file into container
+COPY target/user-management-service-1.0.0.jar app.jar
+
+# Expose port 8080
+EXPOSE 8080
+
+# Run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
+DOCKEREOF
+
+
+
+#================================================================
+# STEP 7: BUILD DOCKER IMAGE
+#================================================================
+
+
+
+
+
+# Create a network so containers can communicate
+docker network create springboot-network
+
+# Verify network
+docker network ls
+
+
+# Run MySQL in the network
+docker run -d \
+  --name mysql-container \
+  --network springboot-network \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -p 3306:3306 \
+  mysql:latest
+
+
+
+# Wait for MySQL to be ready (important!)
+sleep 20
+
+
+
+# Verify MySQL is running
+docker ps
+docker logs mysql-container
+
+
+
+dockerfile
+-----------
+
+# Dockerfile
+FROM openjdk:17-jdk-slim
+
+WORKDIR /app
+
+COPY target/*.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+
+
+
+
+
+
+# Make sure you have Dockerfile in project root
+# Build the image
+
+
+docker build -t springboot-app .
+
+# Verify image created
+docker images
+
+
+# Run Spring Boot app in same network
+docker run -d \
+  --name springboot-container \
+  --network springboot-network \
+  -e DB_HOST=mysql-container \
+  -e DB_PORT=3306 \
+  -e DB_NAME=mydb \
+  -e DB_USERNAME=root \
+  -e DB_PASSWORD=root \
+  -e SERVER_PORT=8080 \
+  -p 8080:8080 \
+  springboot-app
+
+
+	or
+
+
+DB_HOST     → localhost      ⚠️ Problem in Docker!
+
+# ❌ This will FAIL - because localhost inside container
+# means the container itself NOT mysql-container
+# jdbc:mysql://mysql-container:3306/mydb  ✅
+
+
+# ✅ Only pass DB_HOST - rest will use defaults
+
+
+docker run -d \
+  --name springboot-container \
+  --network springboot-network \
+  -e DB_HOST=mysql-container \
+  -p 8080:8080 \
+  springboot-app
+
+
+
+
+
+# Verify container is running
+docker ps
+
+# Check app logs
+docker logs springboot-container
+
+
+
+# : Test API
+curl http://localhost:8080/api/users
+
+
+
+
+# now check database is created and tables data inside MySQL container
+
+
+# Go inside MySQL container
+docker exec -it mysql-container mysql -u root -proot
+
+mysql> SHOW DATABASES;
+
+mysql> USE mydb;
+
+mysql> SHOW TABLES;
+
+
+mysql> DESCRIBE user;
+
+
+
+
+
+
+ Stop & Clean Up Commands
+===============================
+
+
+# Stop containers
+docker stop springboot-container mysql-container
+
+# Remove containers
+docker rm springboot-container mysql-container
+
+# Remove network
+docker network rm springboot-network
+
+# Remove image
+docker rmi springboot-app
+
+# Remove all stopped containers
+docker container prune
+
+
+
+
+print_info "Useful Commands:"
+echo "  View App Logs:        docker compose logs app -f"
+echo "  View MySQL Logs:      docker compose logs mysql -f"
+echo "  View All Logs:        docker compose logs -f"
+echo "  Stop All:             docker compose down"
+echo "  Restart All:          docker compose restart"
+echo "  Swagger UI:           http://localhost:8080/swagger-ui/index.html"
+echo "  API Base URL:         http://localhost:8080/api/users"
+
+
+
+

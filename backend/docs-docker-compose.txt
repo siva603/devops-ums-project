@@ -1,0 +1,240 @@
+docker-compose.yml
+------------------
+
+version: '3.8'
+
+services:
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql-container
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    networks:
+      - springboot-network
+    volumes:
+      - ~/mysql/data:/var/lib/mysql    # ✅ Bind Mount Path Volume
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  springboot-app:
+    build: .
+    container_name: springboot-container
+    environment:
+      DB_HOST: mysql-container
+      DB_PORT: 3306
+      DB_NAME: mydb
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    networks:
+      - springboot-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: on-failure
+
+networks:
+  springboot-network:
+    driver: bridge
+
+
+
+========================================================================
+run all containers 
+========================================================================
+
+
+# Step 1: Create folder
+mkdir -p ~/mysql/data
+
+# Step 2: Navigate to project
+cd spring-boot-crud-with-mysql
+
+# Step 3: Start all services
+docker compose up -d --build
+
+# Step 4: Check all services running
+docker compose ps
+
+# Step 5: Check logs
+docker compose logs -f
+
+
+
+
+
+
+===================================================================
+Go Inside Container Commands
+===================================================================
+
+# Go inside MySQL container
+docker compose exec mysql bash
+
+# Go directly to MySQL prompt
+docker compose exec mysql mysql -u root -proot
+
+# Go inside Spring Boot container
+docker compose exec springboot-app bash
+
+
+
+
+================================================================
+ MySQL Verification Commands
+================================================================
+
+# Go inside MySQL
+docker compose exec mysql mysql -u root -proot
+
+
+-- Check all databases
+SHOW DATABASES;
+
+-- Use your database
+USE mydb;
+
+-- Check all tables
+SHOW TABLES;
+
+-- Check table structure
+DESCRIBE user;
+
+-- Check all data
+SELECT * FROM user;
+
+-- Check total count
+SELECT COUNT(*) FROM user;
+
+-- Exit MySQL
+EXIT;
+
+
+
+
+
+
+===================================================================
+Verify Data is Persisted in Path
+=====================================================================
+
+
+# Check data is stored in folder
+ls ~/mysql/data
+
+# Output will look like:
+# ├── mydb          ✅ Your database folder
+# ├── mysql
+# ├── ibdata1
+# ├── ib_logfile0
+# └── ib_logfile1
+
+# Check mydb folder
+ls ~/mysql/data/mydb
+
+# Output will look like:
+# ├── user.ibd      ✅ Your table data
+# └── product.ibd
+
+
+
+
+
+
+ Test Data Persistence
+============================
+# Step 1: Add some data via API
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"name":"John","email":"john@gmail.com"}'
+
+# Step 2: Stop and remove containers
+docker compose down
+
+# Step 3: Check data still exists in folder
+ls ~/mysql/data
+ls ~/mysql/data/mydb
+
+# Step 4: Start again
+docker compose up -d
+
+# Step 5: Verify data is still there
+curl http://localhost:8080/api/users
+# ✅ Data should still be there!
+
+
+
+
+=================================================
+Restart Commands
+=================================================
+
+# Restart all services
+docker compose restart
+
+# Restart specific service
+docker compose restart mysql
+docker compose restart springboot-app
+
+
+
+
+
+
+
+
+==================================================
+Check Status Commands
+==================================================
+
+
+# Check running services
+docker compose ps
+
+# Check logs of all services
+docker compose logs
+
+# Check logs of specific service
+docker compose logs mysql
+docker compose logs springboot-app
+
+# Follow logs in real time
+docker compose logs -f
+docker compose logs -f springboot-app
+docker compose logs -f MySQL
+
+
+
+
+
+
+=====================================================
+ Stop Commands
+=====================================================
+
+
+
+# Remove stopped containers
+docker compose rm
+
+# Remove all containers, networks
+docker compose down
+
+# Remove all containers, networks, volumes
+docker compose down -v
+
+# Remove all containers, networks, volumes, images
+docker compose down -v --rmi all
+
+# Remove unused Docker resources
+docker system prune -f
+
+

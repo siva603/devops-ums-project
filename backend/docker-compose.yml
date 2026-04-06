@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql-container
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    networks:
+      - springboot-network
+    volumes:
+      - ~/mysql/data:/var/lib/mysql    # ✅ Bind Mount Path Volume
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  springboot-app:
+    build: .
+    container_name: springboot-container
+    environment:
+      DB_HOST: mysql-container
+      DB_PORT: 3306
+      DB_NAME: mydb
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+    networks:
+      - springboot-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: on-failure
+
+networks:
+  springboot-network:
+    driver: bridge

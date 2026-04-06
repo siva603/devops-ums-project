@@ -1,0 +1,17 @@
+# Step 1 - Build frontend image (one time)
+docker build \
+  --no-cache \
+  --build-arg VITE_API_BASE_URL=/api \
+  --build-arg VITE_USE_API=true \
+  -t ums-frontend:latest .
+
+# Step 2 - Build backend image (one time)
+cd backend/
+docker build -t backend:latest .
+cd ..
+
+# Step 3 - Start EVERYTHING (one command)
+docker-compose up -d
+
+# Step 4 - Verify
+docker ps

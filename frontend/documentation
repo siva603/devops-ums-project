@@ -1,0 +1,273 @@
+ Dockerfile
+================================================
+
+# Stage 1: Build - node:20-slim (Debian based, no musl issues)
+
+FROM node:20-slim AS builder
+
+WORKDIR /app
+
+# Copy package.json only
+COPY package.json ./
+
+# Clean install
+RUN npm install
+
+# Copy all source files
+COPY . .
+
+# Build the Vite app
+RUN npm run build
+
+# Stage 2: Serve with Nginx (small image)
+FROM nginx:alpine
+
+# Copy built files from builder stage
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy custom nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+
+
+
+
+
+this is command  ( it is already exists or not)
+==================
+
+cat > .dockerignore << 'EOF'
+node_modules
+package-lock.json
+dist
+.git
+.gitignore
+*.md
+EOF
+
+
+
+
+( it should run )
+cat > .env << 'EOF'
+VITE_API_BASE_URL=/api
+VITE_USE_API=true
+EOF
+
+
+===============================================
+nginx.config ( it is already exists or not)
+==============================================
+
+server {
+    listen 80;
+    server_name localhost;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Handle React Router (SPA)
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Proxy API → backend-container (internal network only)
+    location /api/ {
+        proxy_pass http://backend-container:8080/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+
+
+
+ Project Structure Should Look Like
+=============================================
+
+UMS-frontend-devops/
+├── Dockerfile
+├── nginx.conf          ← Add this file
+├── package.json
+├── src/
+├── public/
+├── vite.config.ts
+└── ...
+
+
+
+
+
+
+
+
+=======================================================================
+ Problem - Vite Bakes ENV at Build Time!
+======================================================================
+
+
+-e with Docker run = Runtime vars   ❌ Vite can't read these!
+VITE_* vars        = Build time only ❌ Too late at runtime!
+
+We need a workaround → Inject ENV at container startup!
+
+
+
+
+
+
+
+
+========================================================================
+ CREATE IMAGE FOR FRONTEND
+========================================================================
+
+
+docker build \
+  --no-cache \
+  --build-arg VITE_API_BASE_URL=/api \
+  --build-arg VITE_USE_API=true \
+  -t frontend:latest .
+
+
+
+
+=====================================================================
+✅ Verify ENV Vars Baked In
+=====================================================================
+
+# Check VITE_USE_API=true is inside built JS files
+docker exec frontend-container \
+  grep -r "VITE_USE_API" /usr/share/nginx/html/assets/
+
+# Check /api is inside built JS files  
+docker exec frontend-container \
+  grep -r "/api" /usr/share/nginx/html/assets/
+
+
+
+
+
+
+
+
+
+
+
+commands
+==========================================
+
+
+
+docker network create ums-network ( if not created network )
+
+
+
+# before running frontend-container you should run the mysql-container and backend-container in the same network 
+
+# Run MySQL in the network
+docker run -d \
+  --name mysql-container \
+  --network ums-network \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -p 3306:3306 \
+  mysql:latest
+
+
+# Wait for MySQL to be ready (important!)
+sleep 20
+
+# Verify MySQL is running
+docker ps
+docker logs mysql-container
+
+
+=========================
+
+
+# this is for backend-container
+
+docker run -d \
+  --name backend-container \
+  --network ums-network \
+  -e DB_HOST=mysql-container \
+  -p 8080:8080 \
+  backend:latest
+
+
+# Verify MySQL is running
+docker ps
+docker logs backend-container
+
+================================
+
+
+
+docker run -d \
+  --name frontend-container \
+  --network ums-network \
+  -p 80:80 \
+  frontend:latest
+
+
+# Inspect network - only shows containers, no host port for backend
+
+docker network inspect ums-network
+
+
+
+
+
+
+
+
+✅ Verify Connection
+==========================================
+# Check both containers are on same network
+docker network inspect ums-network
+
+# Check frontend logs
+docker logs frontend-container
+
+# Check backend logs
+docker logs backend-container
+
+# Test frontend is running
+curl http://localhost:3000
+
+
+=================================================================
+ Production Flow
+=================================================================
+
+
+Browser (13.234.116.250:3000)
+            ↓
+    AWS Security Group ✅ Port 3000 Open
+            ↓
+    iptables ✅ After fix
+            ↓
+    frontend-container (Nginx:80)
+            ↓ /api/* requests
+    backend-container:8080 (Internal only 🔒)
+            ↓
+    mysql-container:3306 (Internal only 🔒)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

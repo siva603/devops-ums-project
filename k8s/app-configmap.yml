@@ -1,0 +1,15 @@
+#================================================================
+# ConfigMap - Non-sensitive configuration for Spring Boot App
+#================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: spring-app
+data:
+  # MySQL host (service name)
+  DB_HOST: mysql
+  # MySQL port
+  DB_PORT: "3306"
+  # Application server port
+  SERVER_PORT: "8080"

@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql-container
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: user_management_system
+    ports:
+      - "3306:3306"
+    networks:
+      - ums-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /root/data/mysql:/var/lib/mysql
+
+  backend:
+    image: backend:latest
+    container_name: backend-container
+    environment:
+      DB_HOST: mysql-container
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - ums-network
+    restart: on-failure
+
+  frontend:
+    image: frontend:latest
+    container_name: frontend-container
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - ums-network
+    restart: on-failure
+
+networks:
+  ums-network:
+    driver: bridge

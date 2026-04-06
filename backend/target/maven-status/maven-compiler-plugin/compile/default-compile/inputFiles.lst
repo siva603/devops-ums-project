@@ -1,0 +1,9 @@
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/UserManagementApplication.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/repository/UserRepository.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/dao/UserDAO.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/service/impl/UserServiceImpl.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/controller/UserController.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/entity/User.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/dao/impl/UserDAOImpl.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/service/UserService.java
+/root/spring-boot-crud-with-mysql/src/main/java/com/example/usermanagement/config/DataLoaderConfig.java

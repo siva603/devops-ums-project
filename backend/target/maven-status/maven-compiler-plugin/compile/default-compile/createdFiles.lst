@@ -1,0 +1,10 @@
+com/example/usermanagement/service/UserService.class
+com/example/usermanagement/entity/User.class
+com/example/usermanagement/config/DataLoaderConfig.class
+com/example/usermanagement/dao/UserDAO.class
+com/example/usermanagement/repository/UserRepository.class
+com/example/usermanagement/dao/impl/UserDAOImpl.class
+com/example/usermanagement/UserManagementApplication.class
+com/example/usermanagement/controller/UserController.class
+com/example/usermanagement/entity/User$UserBuilder.class
+com/example/usermanagement/service/impl/UserServiceImpl.class

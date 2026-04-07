@@ -1,14 +1,30 @@
-# Step 1 - Build frontend image (one time)
+docker build \
+  -t backend:latest \
+  ./backend
+
+
+
 docker build \
   --no-cache \
   --build-arg VITE_API_BASE_URL=/api \
   --build-arg VITE_USE_API=true \
-  -t ums-frontend:latest .
+  -t frontend:latest \
+  ./frontend
 
-# Step 2 - Build backend image (one time)
-cd backend/
-docker build -t backend:latest .
-cd ..
+docker images
+
+
+
+mkdir -p /root/data
+
+# Create all data directories
+mkdir -p /root/data/mysql
+mkdir -p /root/data/backend/logs
+mkdir -p /root/data/frontend/logs
+mkdir -p /root/data/splunk
+
+
+
 
 # Step 3 - Start EVERYTHING (one command)
 docker-compose up -d

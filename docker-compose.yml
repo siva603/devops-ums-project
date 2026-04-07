@@ -8,8 +8,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: user_management_system
-    ports:
-      - "3306:3306"
     networks:
       - ums-network
     healthcheck:
@@ -25,13 +23,13 @@ services:
     container_name: backend-container
     environment:
       DB_HOST: mysql-container
-    ports:
-      - "8080:8080"
     depends_on:
       mysql:
         condition: service_healthy
     networks:
       - ums-network
+    volumes:
+      - /root/data/backend/logs:/app/logs
     restart: on-failure
 
   frontend:
@@ -43,6 +41,8 @@ services:
       - backend
     networks:
       - ums-network
+    volumes:
+      - /root/data/frontend/logs:/var/log/nginx
     restart: on-failure
 
 networks:

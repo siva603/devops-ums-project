@@ -1,0 +1,32 @@
+docker stop mysql-container backend-container frontend-container
+
+
+docker rm mysql-container backend-container frontend-container
+
+
+docker rmi mysql:latest backend:latest frontend:latest
+
+
+docker network rm ums-network
+
+# Check no containers
+docker ps -a
+
+# Check no images
+docker images
+
+# Check no network
+docker network ls | grep ums-network
+
+
+# Remove old mysql data
+rm -rf /root/data/mysql/*
+
+# Remove old logs
+rm -rf /root/data/backend/logs/*
+rm -rf /root/data/frontend/logs/*
+
+# Verify clean
+ls /root/data/mysql
+ls /root/data/backend/logs
+ls /root/data/frontend/logs

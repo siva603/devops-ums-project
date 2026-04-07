@@ -1,10 +1,4 @@
-#================================================================
-# Namespace for Spring Boot Application
-#================================================================
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: spring-app
-  labels:
-    app: spring-boot-crud
-    environment: production
+  name: ums

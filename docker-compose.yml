@@ -17,12 +17,14 @@ services:
       retries: 5
     volumes:
       - /root/data/mysql:/var/lib/mysql
+    restart: unless-stopped
 
   backend:
     image: backend:latest
     container_name: backend-container
     environment:
       DB_HOST: mysql-container
+      DB_PORT: 3306
     depends_on:
       mysql:
         condition: service_healthy
@@ -30,20 +32,30 @@ services:
       - ums-network
     volumes:
       - /root/data/backend/logs:/app/logs
-    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/users"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
 
   frontend:
     image: frontend:latest
     container_name: frontend-container
     ports:
       - "80:80"
+    environment:
+      BACKEND_HOST: backend-container   # ✅ nginx env variable
+      BACKEND_PORT: 8080                # ✅ nginx env variable
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy      # ✅ wait for backend ready
     networks:
       - ums-network
     volumes:
       - /root/data/frontend/logs:/var/log/nginx
-    restart: on-failure
+    restart: unless-stopped
 
 networks:
   ums-network:

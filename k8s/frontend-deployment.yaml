@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ums-frontend
+  namespace: ums
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ums-frontend
+  template:
+    metadata:
+      labels:
+        app: ums-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: siva603/ums-frontend:latest
+          envFrom:
+            - secretRef:
+                name: frontend-secret
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: frontend-logs
+              mountPath: /var/log/nginx
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+      volumes:
+        - name: frontend-logs
+          hostPath:
+            path: /root/data/frontend/logs
+            type: DirectoryOrCreate

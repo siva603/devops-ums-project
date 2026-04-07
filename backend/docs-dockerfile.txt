@@ -76,26 +76,16 @@ mvn -jar app.jar ( or ) mvn spring-boot:run
 
 
 #================================================================
-# STEP 6: CREATE DOCKERFILE
+# STEP 6: CREATE DOCKERFILE for backend
 #================================================================
 
 
 
 cat > Dockerfile << 'DOCKEREOF'
-# Use official OpenJDK 21 slim image as base
-FROM openjdk:21-jdk-slim
-
-# Set working directory inside container
+FROM eclipse-temurin:21-jdk
 WORKDIR /app
-
-# Copy the built JAR file into container
-COPY target/user-management-service-1.0.0.jar app.jar
-
-# Expose port 8080
-EXPOSE 8080
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+COPY target/*.jar app.jar
+ENTRYPOINT ["java","-jar","app.jar"]
 DOCKEREOF
 
 
@@ -109,18 +99,18 @@ DOCKEREOF
 
 
 # Create a network so containers can communicate
-docker network create springboot-network
+docker network create ums-network
 
 # Verify network
 docker network ls
 
 
 # Run MySQL in the network
+
 docker run -d \
   --name mysql-container \
-  --network springboot-network \
+  --network ums-network \
   -e MYSQL_ROOT_PASSWORD=root \
-  -p 3306:3306 \
   mysql:latest
 
 
@@ -139,16 +129,10 @@ docker logs mysql-container
 dockerfile
 -----------
 
-# Dockerfile
-FROM openjdk:17-jdk-slim
-
+FROM eclipse-temurin:21-jdk
 WORKDIR /app
-
 COPY target/*.jar app.jar
-
-EXPOSE 8080
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java","-jar","app.jar"]
 
 
 
@@ -160,7 +144,7 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 # Build the image
 
 
-docker build -t springboot-app .
+docker build -t backend:latest .
 
 # Verify image created
 docker images
@@ -168,16 +152,16 @@ docker images
 
 # Run Spring Boot app in same network
 docker run -d \
-  --name springboot-container \
-  --network springboot-network \
+  --name backend-container \
+  --network ums-network \
   -e DB_HOST=mysql-container \
   -e DB_PORT=3306 \
-  -e DB_NAME=mydb \
+  -e DB_NAME=user_management_system \
   -e DB_USERNAME=root \
   -e DB_PASSWORD=root \
   -e SERVER_PORT=8080 \
   -p 8080:8080 \
-  springboot-app
+  backend:latest
 
 
 	or
@@ -194,11 +178,10 @@ DB_HOST     → localhost      ⚠️ Problem in Docker!
 
 
 docker run -d \
-  --name springboot-container \
-  --network springboot-network \
+  --name backend-container \
+  --network ums-network \
   -e DB_HOST=mysql-container \
-  -p 8080:8080 \
-  springboot-app
+  backend:latest
 
 
 

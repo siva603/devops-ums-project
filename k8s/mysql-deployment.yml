@@ -1,45 +1,29 @@
-#================================================================
-# MySQL Deployment
-#================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mysql
-  namespace: spring-app
-  labels:
-    app: mysql
+  name: ums-mysql
+  namespace: ums
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mysql
+      app: ums-mysql
   template:
     metadata:
       labels:
-        app: mysql
+        app: ums-mysql
     spec:
       containers:
         - name: mysql
-          image: mysql:8
+          image: mysql:latest
+          envFrom:
+            - secretRef:
+                name: mysql-secret
           ports:
             - containerPort: 3306
-          env:
-            # Get DB name from secret
-            - name: MYSQL_DATABASE
-              valueFrom:
-                secretKeyRef:
-                  name: mysql-secret
-                  key: DB_NAME
-            # Get root password from secret
-            - name: MYSQL_ROOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: mysql-secret
-                  key: DB_PASSWORD
           volumeMounts:
             - name: mysql-storage
               mountPath: /var/lib/mysql
-          # Health check for MySQL
           readinessProbe:
             exec:
               command:
@@ -49,6 +33,8 @@ spec:
                 - localhost
             initialDelaySeconds: 20
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
           livenessProbe:
             exec:
               command:
@@ -58,7 +44,9 @@ spec:
                 - localhost
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 5
       volumes:
         - name: mysql-storage
-          persistentVolumeClaim:
-            claimName: mysql-pvc
+          hostPath:
+            path: /root/data/mysql
+            type: DirectoryOrCreate

@@ -134,6 +134,7 @@ docker build \
   -t frontend:latest .
 
 
+docker build -t frontend:latest .
 
 
 =====================================================================
@@ -208,10 +209,11 @@ docker logs backend-container
 
 
 docker run -d \
-  --name frontend-container \
-  --network ums-network \
   -p 80:80 \
-  frontend:latest
+  -e BACKEND_HOST=backend-container \
+  -e BACKEND_PORT=8080 \
+  --name frontend-container \
+  siva603/ums-frontend:latest
 
 
 # Inspect network - only shows containers, no host port for backend
